@@ -194,15 +194,27 @@ class DocumentAssistant:
             st.error("Error processing files")
 
     def render_main_content(self):
-        """Render main content"""
+        """Render main content area with tabs"""
         st.title("📚 Document Assistant")
         
+        if not st.session_state.initialized:
+            st.info("🔄 Please wait while the system initializes...")
+            return
+            
         if not st.session_state.documents:
             st.info("👈 Please upload documents to get started!")
             return
             
-        # Create tabs
-        tab_docs, tab_chat = st.tabs(["📑 Documents", "💭 Chat"])
+        # Create three tabs
+        tab_chat, tab_analysis, tab_docs = st.tabs(["💭 Chat", "📊 Analysis", "📑 Documents"])
+        
+        # Chat tab
+        with tab_chat:
+            ChatInterface.render()
+        
+        # Analysis tab (placeholder for now)
+        with tab_analysis:
+            st.info("📊 Document analysis features coming soon!")
         
         # Documents tab
         with tab_docs:
@@ -210,13 +222,10 @@ class DocumentAssistant:
                 for doc_name in st.session_state.active_docs:
                     doc_info = st.session_state.documents.get(doc_name)
                     if doc_info:
-                        DocumentContainer.render(doc_name, doc_info)
+                        with st.expander(f"📄 {doc_name}", expanded=True):
+                            DocumentContainer.render(doc_name, doc_info)
             else:
-                st.info("👈 Please select documents from the sidebar")
-        
-        # Chat tab
-        with tab_chat:
-            ChatInterface.render()
+                st.info("👈 Please select documents from the sidebar to view details")
 
     def run(self):
         """Run the application"""

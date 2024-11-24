@@ -3,6 +3,7 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 from typing import Dict, List
+import google.generativeai as genai
 import pandas as pd
 from document_assistant.core import logger
 
@@ -14,14 +15,34 @@ class DocumentContainer:
         """Render a complete document container"""
         try:
             with st.container():
-                st.markdown(f"## 📄 {doc_name.split('.')[0]}")
-                
                 # Layout columns
                 col1, col2 = st.columns([3, 2])
                 
                 with col1:
-                    # Metadata and Summary
-                    DocumentContainer._render_metadata(doc_info)
+                    # Document Information Section
+                    st.markdown("### 📋 Document Information")
+                    
+                    # Title
+                    if 'metadata' in doc_info and doc_info['metadata'].get('title'):
+                        st.markdown(f"**Title:** {doc_info['metadata']['title']}")
+                    
+                    # Authors
+                    if 'metadata' in doc_info and doc_info['metadata'].get('authors'):
+                        st.markdown("**Authors:**")
+                        authors = doc_info['metadata']['authors']
+                        if authors:
+                            for author in authors:
+                                st.markdown(f"- {author}")
+                        else:
+                            st.markdown("*No authors found*")
+                    
+                    # Year
+                    if 'metadata' in doc_info and doc_info['metadata'].get('year'):
+                        st.markdown(f"**Year:** {doc_info['metadata']['year']}")
+
+                    st.markdown("---")  # Divider
+                    
+                    # Summary and other sections
                     DocumentContainer._render_summary(doc_info)
                     DocumentContainer._render_classification(doc_info)
                     DocumentContainer._render_stats(doc_info['stats'])
@@ -36,34 +57,32 @@ class DocumentContainer:
         except Exception as e:
             logger.error(f"Error rendering document container: {str(e)}")
             st.error("Error displaying document information")
-
-    @staticmethod
-    def _render_metadata(doc_info: Dict):
-        """Render document metadata"""
-        try:
-            if 'metadata' in doc_info:
-                metadata = doc_info['metadata']
-                st.markdown("### 📋 Document Information")
+    # def render(doc_name: str, doc_info: Dict):
+    #     """Render a complete document container"""
+    #     try:
+    #         with st.container():
+    #             st.markdown(f"## 📄 {doc_name.split('.')[0]}")
                 
-                # Create two columns for metadata
-                col1, col2 = st.columns(2)
+    #             # Layout columns
+    #             col1, col2 = st.columns([3, 2])
                 
-                with col1:
-                    if metadata.get('title'):
-                        st.markdown(f"**Title:** {metadata['title']}")
-                    if metadata.get('author'):
-                        st.markdown(f"**Author(s):** {metadata['author']}")
-                    if metadata.get('creation_date'):
-                        st.markdown(f"**Created:** {metadata['creation_date']}")
-                
-                with col2:
-                    if metadata.get('subject'):
-                        st.markdown(f"**Subject:** {metadata['subject']}")
-                    if metadata.get('keywords'):
-                        st.markdown(f"**Keywords:** {metadata['keywords']}")
+    #             with col1:
+    #                 # Metadata and Summary
+    #                 DocumentContainer._render_metadata(doc_info)
+    #                 DocumentContainer._render_summary(doc_info)
+    #                 DocumentContainer._render_classification(doc_info)
+    #                 DocumentContainer._render_stats(doc_info['stats'])
                     
-        except Exception as e:
-            logger.error(f"Metadata rendering error: {str(e)}")
+    #             with col2:
+    #                 # Image and Similarities
+    #                 DocumentContainer._render_image(doc_info)
+    #                 DocumentContainer._render_similarities(doc_info)
+                
+    #             st.markdown("---")  # Divider
+                
+    #     except Exception as e:
+    #         logger.error(f"Error rendering document container: {str(e)}")
+    #         st.error("Error displaying document information")
 
     @staticmethod
     def _render_summary(doc_info: Dict):
@@ -143,33 +162,45 @@ class DocumentContainer:
 
     @staticmethod
     def _render_stats(stats: Dict):
-        """Render document statistics"""
-        try:
-            st.markdown("### 📊 Document Statistics")
-            
-            # Create metrics in columns
-            cols = st.columns(4)
-            
-            with cols[0]:
-                st.metric("Words", f"{stats['word_count']:,}")
-            with cols[1]:
-                st.metric("Characters", f"{stats['char_count']:,}")
-            with cols[2]:
-                st.metric("Size", f"{stats['file_size']/1024:.1f} KB")
-            with cols[3]:
-                if 'num_pages' in stats:
-                    st.metric("Pages", stats['num_pages'])
-                elif 'line_count' in stats:
-                    st.metric("Lines", stats['line_count'])
+        """Render document statistics with better formatting"""
+        st.markdown("### 📊 Document Statistics")
+        
+        # Format numbers with appropriate scaling
+        def format_number(n: int) -> str:
+            if n >= 1_000_000:
+                return f"{n/1_000_000:.1f}M"
+            elif n >= 1_000:
+                return f"{n/1_000:.1f}K"
+            return str(n)
+        
+        # Create metrics in columns with better spacing
+        col1, col2, col3, col4 = st.columns([1,1,1,1])
+        
+        with col1:
+            word_count = format_number(stats['word_count'])
+            st.metric("Words", word_count)
+        
+        with col2:
+            char_count = format_number(stats['char_count'])
+            st.metric("Characters", char_count)
+        
+        with col3:
+            size_kb = stats['file_size']/1024
+            size_display = f"{size_kb:.1f}KB" if size_kb < 1024 else f"{size_kb/1024:.1f}MB"
+            st.metric("Size", size_display)
+        
+        with col4:
+            if 'num_pages' in stats:
+                st.metric("Pages", stats['num_pages'])
+            elif 'line_count' in stats:
+                line_count = format_number(stats['line_count'])
+                st.metric("Lines", line_count)
             
             # Additional stats based on file type
             if stats['type'] == 'docx' and 'table_count' in stats:
                 st.markdown(f"**Tables:** {stats['table_count']}")
             if 'encoding' in stats:
                 st.markdown(f"**Encoding:** {stats['encoding']}")
-                
-        except Exception as e:
-            logger.error(f"Statistics rendering error: {str(e)}")
 
     @staticmethod
     def _render_image(doc_info: Dict):
@@ -196,36 +227,53 @@ class DocumentContainer:
 
     @staticmethod
     def _render_similarities(doc_info: Dict):
-        """Render document similarities"""
+        """Render document similarities with improved formatting"""
         try:
             if 'similarities' in doc_info and doc_info['similarities']:
-                st.markdown("### 🔄 Similar Documents")
+                st.markdown("### 🔄 Similarity Score")
                 
-                similarities = doc_info['similarities']
-                if similarities:  # Check if not empty
-                    for other_doc, score in sorted(similarities.items(), 
-                                                 key=lambda x: x[1], 
-                                                 reverse=True):
-                        # Determine color based on score
-                        score_color = ("green" if score > 70 else 
-                                     "orange" if score > 40 else "red")
-                        
-                        # Create similarity indicator
-                        st.markdown(f"""
+                for other_doc, score in sorted(doc_info['similarities'].items(), 
+                                            key=lambda x: x[1], 
+                                            reverse=True):
+                    # Truncate long document names
+                    doc_display = other_doc.split('.')[0]
+                    if len(doc_display) > 30:
+                        doc_display = doc_display[:27] + "..."
+                    
+                    # Determine color based on score
+                    score_color = ("green" if score > 70 else 
+                                "orange" if score > 40 else "red")
+                    
+                    # Create similarity indicator with tooltip
+                    st.markdown(f"""
+                        <div style='
+                            padding: 8px;
+                            margin: 4px 0;
+                            border-radius: 4px;
+                            background-color: rgba(255,255,255,0.05);
+                            border-left: 4px solid {score_color};
+                            overflow: hidden;
+                            text-overflow: ellipsis;
+                            white-space: nowrap;
+                        ' title='{other_doc.split('.')[0]}'>
                             <div style='
-                                padding: 10px;
-                                margin: 5px 0;
-                                border-radius: 5px;
-                                background-color: rgba(255,255,255,0.05);
-                                border-left: 4px solid {score_color};
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
                             '>
-                                <div style='display: flex; justify-content: space-between;'>
-                                    <strong>{other_doc.split('.')[0]}</strong>
-                                    <span>{score:.1f}% similar</span>
-                                </div>
+                                <span style='
+                                    max-width: 80%;
+                                    overflow: hidden;
+                                    text-overflow: ellipsis;
+                                    white-space: nowrap;
+                                '>
+                                    <strong>{doc_display}</strong>
+                                </span>
+                                <span>{score:.1f}%</span>
                             </div>
-                        """, unsafe_allow_html=True)
-                        
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
         except Exception as e:
             logger.error(f"Similarities rendering error: {str(e)}")
 

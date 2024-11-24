@@ -3,6 +3,7 @@ import asyncio
 from document_assistant.core import logger, MAX_FILE_SIZE
 from document_assistant.processors import PDFProcessor, DocxProcessor, DocProcessor, TxtProcessor
 from document_assistant.models import ModelManager
+from document_assistant.metadata_extractor import MetadataExtractor
 from typing import Dict, List, Optional
 from pathlib import Path
 import streamlit as st
@@ -18,6 +19,7 @@ class DocumentProcessor:
             'txt': TxtProcessor.process
         }
         self.model_manager = model_manager
+        self.metadata_extractor = MetadataExtractor()
         print(f"DocumentProcessor initialized with model manager: {self.model_manager is not None}")
 
     def check_models(self) -> bool:
@@ -201,6 +203,13 @@ class DocumentProcessor:
             result = self.processors[file_ext](file)
             if not result or not result.get('content'):
                 raise ValueError("No content could be extracted")
+            
+            # Extract metadata
+            metadata = self.metadata_extractor.extract_metadata(
+                result['content'],
+                file.name
+            )
+            result['metadata'] = metadata
             
             return result
             
