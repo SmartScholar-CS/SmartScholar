@@ -3,7 +3,7 @@ import streamlit as st
 import logging
 import google.generativeai as genai
 import torch
-from typing import Dict, Any
+from typing import Dict, Any, List
 import time
 
 # Configure logging
@@ -75,9 +75,10 @@ def init_session_state():
         if 'api_config' not in st.session_state:
             st.session_state.api_config = setup_apis()
         
-        # Initialize LLM
+        # Initialize LLM model and config
         if 'llm_model' not in st.session_state:
-            st.session_state.llm_model = st.session_state.api_config['model']
+            genai.configure(api_key=st.secrets['GOOGLE_API_KEY'])
+            st.session_state.llm_model = genai.GenerativeModel('gemini-1.5-pro')
             st.session_state.llm_config = genai.types.GenerationConfig(
                 temperature=0.7,
                 max_output_tokens=1024,

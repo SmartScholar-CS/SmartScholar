@@ -15,149 +15,117 @@ class ModelManager:
     """Manages all AI model initialization and usage"""
     
     def __init__(self):
-        self.classifier = None
+        self.classifier = None 
         self.summary_model = None
-        self.similarity_model = None
+        self.similarity_calculator = None  # Changed from similarity_model
         self.image_generator = None
         self.initialized = False
-        self.status = st.empty()
 
-    def classify_document(self, text: str) -> Optional[Dict]:
-        """Classify document content"""
+    def classify_document(self, text: str, cache_key: str = None) -> Optional[Dict]:
+        """Classify document with caching"""
         try:
+            # Check cache first
+            if cache_key and cache_key in st.session_state.model_cache['classifications']:
+                return st.session_state.model_cache['classifications'][cache_key]
+
             if not self.classifier:
                 return None
 
-            # Default categories for academic papers
-            categories = [
-                # AI and Computer Science
-                "Artificial Intelligence", "Machine Learning", "Deep Learning",
-                "Natural Language Processing", "Computer Vision", "Robotics",
-                "Data Science", "Big Data", "Cloud Computing", "Cybersecurity",
-                "Internet of Things", "Blockchain", "Software Engineering",
-                
-                # Mathematics and Statistics
-                "Mathematics", "Statistics", "Linear Algebra",
-                "Probability Theory", "Mathematical Optimization",
-                "Graph Theory", "Number Theory", "Applied Mathematics",
-                
-                # Physical Sciences
-                "Physics", "Quantum Computing", "Theoretical Physics",
-                "Astrophysics", "Materials Science", "Nanotechnology",
-                "Chemistry", "Chemical Engineering", "Environmental Science",
-                
-                # Life Sciences
-                "Biology", "Biotechnology", "Genetics", "Neuroscience",
-                "Bioinformatics", "Molecular Biology", "Medical Science",
-                "Pharmaceutical Science", "Healthcare Technology",
-                
-                # Engineering
-                "Electrical Engineering", "Mechanical Engineering",
-                "Civil Engineering", "Aerospace Engineering",
-                "Control Systems", "Signal Processing", "Microelectronics",
-                
-                # Social Sciences and Business
-                "Economics", "Finance", "Business Analytics",
-                "Management Science", "Operations Research",
-                "Information Systems", "Digital Transformation",
-                
-                # Interdisciplinary Fields
-                "Cognitive Science", "Computational Biology",
-                "Human-Computer Interaction", "Information Theory",
-                "Systems Engineering", "Network Science",
-                "Quantum Information", "Sustainable Technology"
-            ]
+            # Use a smaller sample of text for faster classification
+            sample_text = text[:1500]  # Reduced from 1024 to improve accuracy
 
-            # Truncate text if too long
-            if len(text) > 1024:
-                text = text[:1024]
-
-            # Run classification
             result = self.classifier(
-                text,
-                candidate_labels=categories,
-                multi_label=True
-            )
+                sample_text,
+                candidate_labels=[
+                    # AI and Computer Science
+                    "Artificial Intelligence", "Machine Learning", "Deep Learning",
+                    "Natural Language Processing", "Computer Vision", "Robotics",
+                    "Data Science", "Big Data", "Cloud Computing", "Cybersecurity",
+                    "Internet of Things", "Blockchain", "Software Engineering",
+                    
+                    # Mathematics and Statistics
+                    "Mathematics", "Statistics", "Linear Algebra",
+                    "Probability Theory", "Mathematical Optimization",
+                    "Graph Theory", "Number Theory", "Applied Mathematics",
+                    
+                    # Physical Sciences
+                    "Physics", "Quantum Computing", "Theoretical Physics",
+                    "Astrophysics", "Materials Science", "Nanotechnology",
+                    "Chemistry", "Chemical Engineering", "Environmental Science",
+                    
+                    # Life Sciences
+                    "Biology", "Biotechnology", "Genetics", "Neuroscience",
+                    "Bioinformatics", "Molecular Biology", "Medical Science",
+                    "Pharmaceutical Science", "Healthcare Technology",
+                    
+                    # Engineering
+                    "Electrical Engineering", "Mechanical Engineering",
+                    "Civil Engineering", "Aerospace Engineering",
+                    "Control Systems", "Signal Processing", "Microelectronics",
+                    
+                    # Social Sciences and Business
+                    "Economics", "Finance", "Business Analytics",
+                    "Management Science", "Operations Research",
+                    "Information Systems", "Digital Transformation",
+                    
+                    # Interdisciplinary Fields
+                    "Cognitive Science", "Computational Biology",
+                    "Human-Computer Interaction", "Information Theory",
+                    "Systems Engineering", "Network Science",
+                    "Quantum Information", "Sustainable Technology"
+            ],
 
-            # Format results
-            topic_scores = list(zip(result['labels'], result['scores']))
-            topic_scores.sort(key=lambda x: x[1], reverse=True)
+            multi_label=True,
+            hypothesis_template="This text discusses {}."
+        )
 
-            return {
-                'topics': [t[0] for t in topic_scores],
-                'scores': [t[1] for t in topic_scores]
+            classification = {
+                'topics': result['labels'],
+                'scores': result['scores']
             }
+
+            # Cache the result
+            if cache_key:
+                st.session_state.model_cache['classifications'][cache_key] = classification
+
+            return classification
 
         except Exception as e:
             logger.error(f"Classification error: {str(e)}")
             return None
         
     def initialize_models(self) -> bool:
-        """Initialize all models synchronously"""
+        """Initialize all models"""
         try:
-            start_time = time.time()
-            self.status.info("🚀 Initializing AI models...")
-
             # Initialize classifier
-            try:
-                self.classifier = pipeline(
-                    "zero-shot-classification",
-                    model="cross-encoder/nli-deberta-v3-small",
-                    device=DEVICE
-                )
-                logger.info("Classifier initialized")
-            except Exception as e:
-                logger.error(f"Classifier initialization failed: {str(e)}")
-                return False
-
-            # Initialize similarity model
-            try:
-                self.similarity_model = SentenceTransformer(
-                    'sentence-transformers/all-MiniLM-L6-v2',
-                    device=DEVICE
-                )
-                logger.info("Similarity model initialized")
-            except Exception as e:
-                logger.error(f"Similarity model initialization failed: {str(e)}")
-                return False
-
-            # Initialize summary model
-            try:
-                self.summary_model = SummaryGenerator()
-            except Exception as e:
-                logger.error(f"Summary model initialization failed: {str(e)}")
-                return False
-
-            # Initialize image generator
-            try:
-                self.image_generator = ImageGenerator()
-            except Exception as e:
-                logger.error(f"Image generator initialization failed: {str(e)}")
-                return False
-
+            self.classifier = pipeline(
+                "zero-shot-classification",
+                model="cross-encoder/nli-deberta-v3-small",
+                device=DEVICE
+            )
+            
+            # Initialize similarity calculator
+            self.similarity_calculator = SimilarityCalculator()
+            
+            # Initialize other models
+            self.summary_model = SummaryGenerator()
+            self.image_generator = ImageGenerator()
+            
             # Mark as initialized
             self.initialized = True
-            
-            # Show success message
-            elapsed_time = time.time() - start_time
-            self.status.success(f"✅ Models initialized successfully! ({elapsed_time:.1f}s)")
-            time.sleep(1)
-            self.status.empty()
-            
             return True
             
         except Exception as e:
             logger.error(f"Model initialization error: {str(e)}")
-            self.status.error(f"Failed to initialize models: {str(e)}")
             return False
 
     def check_initialized(self) -> bool:
-        """Verify all models are properly initialized"""
-        return (self.classifier is not None and 
-                self.summary_model is not None and 
+        """Check if all models are initialized"""
+        return (self.initialized and
+                self.classifier is not None and
+                self.summary_model is not None and
                 self.similarity_model is not None and
-                self.image_generator is not None and
-                self.initialized)
+                self.image_generator is not None)
 
 class SummaryGenerator:
     """Handles document summarization"""
@@ -397,19 +365,30 @@ class CitationExtractor:
             logger.error(f"References extraction error: {str(e)}")
             return []
 
+# In models.py
+
 class SimilarityCalculator:
     """Handles document similarity calculations"""
     
-    def __init__(self, model: SentenceTransformer):
-        self.model = model
+    def __init__(self):
+        self.model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+        self.model.to(DEVICE)
 
     def calculate_similarity(self, source_text: str, comparison_texts: List[str]) -> Optional[List[float]]:
         """Calculate semantic similarity between documents"""
         try:
             with torch.no_grad():
                 # Generate embeddings
-                source_embedding = self.model.encode(source_text, convert_to_tensor=True)
-                comparison_embeddings = self.model.encode(comparison_texts, convert_to_tensor=True)
+                source_embedding = self.model.encode(
+                    source_text, 
+                    convert_to_tensor=True,
+                    device=DEVICE
+                )
+                comparison_embeddings = self.model.encode(
+                    comparison_texts, 
+                    convert_to_tensor=True,
+                    device=DEVICE
+                )
                 
                 # Calculate cosine similarity
                 similarities = torch.nn.functional.cosine_similarity(
@@ -423,6 +402,7 @@ class SimilarityCalculator:
         except Exception as e:
             logger.error(f"Similarity calculation error: {str(e)}")
             return None
+        
 
     def find_similar_sections(self, source_text: str, target_text: str, 
                             chunk_size: int = 200) -> List[Tuple[str, float]]:

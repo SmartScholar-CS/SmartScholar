@@ -229,64 +229,73 @@ class DocumentContainer:
         except Exception as e:
             logger.error(f"Similarities rendering error: {str(e)}")
 
+# In ui_components.py
+
 class ChatInterface:
     """Handles the chat interface"""
     
     @staticmethod
     def render():
         """Render the chat interface"""
-        try:
-            st.markdown("### 💬 Chat with Documents")
+        st.markdown("### 💬 Chat with Documents")
+        
+        if not st.session_state.active_docs:
+            st.info("Please upload and select documents to start chatting!")
+            return
             
-            if not st.session_state.active_docs:
-                st.info("Please upload and select documents to start chatting!")
-                return
+        # Show active documents
+        st.info(f"📚 Currently analyzing: {', '.join(st.session_state.active_docs)}")
+        
+        # Create message containers
+        chat_container = st.container()
+        input_container = st.container()
+        
+        with input_container:
+            prompt = st.chat_input("Ask me anything about your documents...")
+        
+        with chat_container:
+            for message in st.session_state.chat_history:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+            
+            # Handle new message
+            if prompt:
+                with st.chat_message("user"):
+                    st.markdown(prompt)
                 
-            st.info(f"📚 Currently analyzing: {', '.join(st.session_state.active_docs)}")
-            
-            # Create containers
-            chat_container = st.container()
-            input_container = st.container()
-            
-            # Handle input
-            with input_container:
-                prompt = st.chat_input("Ask me anything about your documents...")
-            
-            # Display messages
-            with chat_container:
-                for message in st.session_state.chat_history:
-                    with st.chat_message(message["role"]):
-                        st.markdown(message["content"])
-                
-                # Handle new message
-                if prompt:
-                    with st.chat_message("user"):
-                        st.markdown(prompt)
-                    
-                    with st.chat_message("assistant"):
-                        with st.spinner("Thinking..."):
+                with st.chat_message("assistant"):
+                    with st.spinner("Thinking..."):
+                        try:
                             response = ChatInterface.get_response(
-                                prompt,
+                                prompt, 
                                 list(st.session_state.active_docs)
                             )
                             st.markdown(response)
-                    
-                    # Update chat history
-                    st.session_state.chat_history.extend([
-                        {"role": "user", "content": prompt},
-                        {"role": "assistant", "content": response}
-                    ])
-                    
-                    st.rerun()
-                    
-        except Exception as e:
-            logger.error(f"Chat interface error: {str(e)}")
-            st.error("Chat interface error. Please try again.")
+                            
+                            # Update chat history
+                            st.session_state.chat_history.extend([
+                                {"role": "user", "content": prompt},
+                                {"role": "assistant", "content": response}
+                            ])
+                        except Exception as e:
+                            logger.error(f"Chat error: {str(e)}")
+                            st.error(f"An error occurred: {str(e)}")
+                
+                st.rerun()
 
     @staticmethod
     def get_response(question: str, active_docs: List[str]) -> str:
         """Generate response using Gemini model"""
         try:
+            if not hasattr(st.session_state, 'llm_model'):
+                # Reinitialize if needed
+                genai.configure(api_key=st.secrets['GOOGLE_API_KEY'])
+                st.session_state.llm_model = genai.GenerativeModel('gemini-1.5-pro')
+                st.session_state.llm_config = genai.types.GenerationConfig(
+                    temperature=0.7,
+                    max_output_tokens=1024,
+                )
+
             # Get context from documents
             context = ChatInterface.get_context(active_docs)
             
@@ -296,11 +305,16 @@ class ChatInterface:
 
             Question: {question}
 
-            Please provide a comprehensive answer based on the documents.
-            - Reference specific documents when citing information
+            Please provide a comprehensive answer based on ALL selected documents. 
+            If referring to specific information, mention which document it came from.
+            If you can't find the information in any document, say so clearly.
+            Maintain a friendly, professional tone.
+            
+            Guidelines:
+            - Cite specific documents when referencing information
             - Be clear about uncertain or missing information
-            - Keep the response focused and professional
-            - Add relevant examples from the documents
+            - Use examples from the documents when relevant
+            - Keep the response focused and concise
             """
 
             # Generate response
@@ -318,21 +332,28 @@ class ChatInterface:
     def get_context(active_docs: List[str]) -> str:
         """Combine context from multiple documents"""
         try:
-            context = []
+            context_parts = []
             for doc_name in active_docs:
                 doc = st.session_state.documents.get(doc_name)
                 if doc:
                     # Add document information
-                    context.append(f"\nDocument: {doc_name}")
-                    if 'title' in doc:
-                        context.append(f"Title: {doc['title']}")
+                    context_parts.append(f"\nDocument: {doc_name}")
+                    
+                    # Add summary if available
                     if 'summary' in doc:
-                        context.append(f"Summary: {doc['summary']}")
+                        context_parts.append(f"Summary: {doc['summary']}")
+                    
+                    # Add classification if available
+                    if 'classification' in doc:
+                        topics = doc['classification']['topics'][:3]  # Top 3 topics
+                        context_parts.append(f"Topics: {', '.join(topics)}")
+                    
                     # Add content preview
-                    context.append(f"Content: {doc['content'][:1000]}...")
-                    context.append("---")
+                    content_preview = doc['content'][:1000].replace('\n', ' ')
+                    context_parts.append(f"Content Preview: {content_preview}...")
+                    context_parts.append("---")
             
-            return "\n".join(context)
+            return "\n".join(context_parts)
             
         except Exception as e:
             logger.error(f"Context generation error: {str(e)}")
