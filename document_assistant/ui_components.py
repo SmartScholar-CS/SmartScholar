@@ -356,7 +356,7 @@ class ChatInterface:
             Please provide a comprehensive answer based on ALL selected documents. 
             If referring to specific information, mention which document it came from.
             If you can't find the information in any document, say so clearly.
-            Maintain a friendly, professional tone.
+            Maintain a friendly, professional, conversational tone and explain in simple easy terms.
             
             Guidelines:
             - Cite specific documents when referencing information

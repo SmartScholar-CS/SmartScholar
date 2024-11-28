@@ -4,8 +4,10 @@ from document_assistant.core import init_session_state, logger
 from document_assistant.document_processor import DocumentProcessor
 from document_assistant.ui_components import DocumentContainer, ChatInterface
 from document_assistant.models import ModelManager
+from document_assistant.analysis_components import AnalysisInterface
 from pathlib import Path
 import time
+
 
 class DocumentAssistant:
     def __init__(self):
@@ -200,6 +202,13 @@ class DocumentAssistant:
         if not st.session_state.initialized:
             st.info("🔄 Please wait while the system initializes...")
             return
+        
+        # Initialize analysis interface early but don't display yet
+        analysis_interface = None
+        try:
+            analysis_interface = AnalysisInterface()
+        except Exception as e:
+            logger.error(f"Failed to initialize analysis interface: {str(e)}")
             
         if not st.session_state.documents:
             st.info("👈 Please upload documents to get started!")
@@ -213,8 +222,14 @@ class DocumentAssistant:
             ChatInterface.render()
         
         # Analysis tab (placeholder for now)
+        # with tab_analysis:
+        #     AnalysisInterface.render()
+        #     st.info("📊 Document analysis features coming soon!")
         with tab_analysis:
-            st.info("📊 Document analysis features coming soon!")
+            if analysis_interface and st.session_state.active_docs:
+                analysis_interface.render()
+            else:
+                st.info("📊 Select documents from the sidebar to view analysis")
         
         # Documents tab
         with tab_docs:

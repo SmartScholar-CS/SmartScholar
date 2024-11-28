@@ -20,6 +20,8 @@ Pillow>=10.0.0
 
 # Visualization
 plotly>=5.17.0
+matplotlib>=3.4.3
+seaborn>=0.11.2
 
 # HTTP requests and async
 requests>=2.31.0
@@ -29,6 +31,7 @@ asyncio>=3.4.3
 # Utility packages
 python-magic>=0.4.27
 tqdm>=4.66.1
+feedparser>=6.0.0
 colorama>=0.4.6
 
 # Optional but recommended for better performance

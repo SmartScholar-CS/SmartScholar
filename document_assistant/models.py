@@ -21,19 +21,134 @@ class ModelManager:
         self.image_generator = None
         self.initialized = False
 
-    def classify_document(self, text: str, cache_key: str = None) -> Optional[Dict]:
-        """Classify document with caching"""
-        try:
-            # Check cache first
-            if cache_key and cache_key in st.session_state.model_cache['classifications']:
-                return st.session_state.model_cache['classifications'][cache_key]
+    # def classify_document(self, text: str, cache_key: str = None) -> Optional[Dict]:
+    #     """Classify document with caching"""
+    #     try:
+    #         # Check cache first
+    #         if cache_key and cache_key in st.session_state.model_cache['classifications']:
+    #             return st.session_state.model_cache['classifications'][cache_key]
 
+    #         if not self.classifier:
+    #             return None
+
+    #         # Use a smaller sample of text for faster classification
+    #         sample_text = text[:1500]  # Reduced from 1024 to improve accuracy
+
+    #         result = self.classifier(
+    #             sample_text,
+    #             candidate_labels=[
+    #                 # AI and Computer Science
+    #                 "Artificial Intelligence", "Machine Learning", "Deep Learning",
+    #                 "Natural Language Processing", "Computer Vision", "Robotics",
+    #                 "Data Science", "Big Data", "Cloud Computing", "Cybersecurity",
+    #                 "Internet of Things", "Blockchain", "Software Engineering",
+                    
+    #                 # Mathematics and Statistics
+    #                 "Mathematics", "Statistics", "Linear Algebra",
+    #                 "Probability Theory", "Mathematical Optimization",
+    #                 "Graph Theory", "Number Theory", "Applied Mathematics",
+                    
+    #                 # Physical Sciences
+    #                 "Physics", "Quantum Computing", "Theoretical Physics",
+    #                 "Astrophysics", "Materials Science", "Nanotechnology",
+    #                 "Chemistry", "Chemical Engineering", "Environmental Science",
+                    
+    #                 # Life Sciences
+    #                 "Biology", "Biotechnology", "Genetics", "Neuroscience",
+    #                 "Bioinformatics", "Molecular Biology", "Medical Science",
+    #                 "Pharmaceutical Science", "Healthcare Technology",
+                    
+    #                 # Engineering
+    #                 "Electrical Engineering", "Mechanical Engineering",
+    #                 "Civil Engineering", "Aerospace Engineering",
+    #                 "Control Systems", "Signal Processing", "Microelectronics",
+                    
+    #                 # Social Sciences and Business
+    #                 "Economics", "Finance", "Business Analytics",
+    #                 "Management Science", "Operations Research",
+    #                 "Information Systems", "Digital Transformation",
+                    
+    #                 # Interdisciplinary Fields
+    #                 "Cognitive Science", "Computational Biology",
+    #                 "Human-Computer Interaction", "Information Theory",
+    #                 "Systems Engineering", "Network Science",
+    #                 "Quantum Information", "Sustainable Technology"
+    #         ],
+
+    #         multi_label=True,
+    #         hypothesis_template="This text discusses {}."
+    #     )
+
+    #         classification = {
+    #             'topics': result['labels'],
+    #             'scores': result['scores']
+    #         }
+
+    #         # Cache the result
+    #         if cache_key:
+    #             st.session_state.model_cache['classifications'][cache_key] = classification
+
+    #         return classification
+
+    #     except Exception as e:
+    #         logger.error(f"Classification error: {str(e)}")
+    #         return None
+        
+    def initialize_models(self) -> bool:
+        """Initialize all models with proper error handling"""
+        try:
+            # Initialize classifier with a simpler model for cloud deployment
+            try:
+                self.classifier = pipeline(
+                    "zero-shot-classification",
+                    model="facebook/bart-large-mnli",  # More stable for cloud deployment
+                    device=DEVICE
+                )
+                logger.info("Classifier initialized successfully")
+            except Exception as e:
+                logger.error(f"Classifier initialization error: {str(e)}")
+                self.classifier = None
+
+            # Initialize similarity calculator with a lightweight model
+            try:
+                self.similarity_calculator = SentenceTransformer(
+                    'paraphrase-MiniLM-L6-v2',  # Lightweight model
+                    device=DEVICE
+                )
+                logger.info("Similarity calculator initialized successfully")
+            except Exception as e:
+                logger.error(f"Similarity calculator initialization error: {str(e)}")
+                self.similarity_calculator = None
+
+            # Initialize other components
+            self.summary_model = SummaryGenerator()
+            self.image_generator = ImageGenerator()
+            
+            # Mark as initialized if at least basic functionality is available
+            self.initialized = (self.classifier is not None or 
+                              self.similarity_calculator is not None)
+            
+            return self.initialized
+            
+        except Exception as e:
+            logger.error(f"Model initialization error: {str(e)}")
+            return False
+
+    def check_initialized(self) -> bool:
+        """Check if essential models are initialized"""
+        return self.initialized
+
+    def classify_document(self, text: str, cache_key: Optional[str] = None) -> Optional[Dict]:
+        """Classify document with fallback options"""
+        try:
             if not self.classifier:
+                logger.warning("Classifier not available")
                 return None
 
-            # Use a smaller sample of text for faster classification
-            sample_text = text[:1500]  # Reduced from 1024 to improve accuracy
+            if cache_key and cache_key in st.session_state.get('model_cache', {}).get('classifications', {}):
+                return st.session_state.model_cache['classifications'][cache_key]
 
+            sample_text = text[:1500]
             result = self.classifier(
                 sample_text,
                 candidate_labels=[
@@ -74,10 +189,8 @@ class ModelManager:
                     "Systems Engineering", "Network Science",
                     "Quantum Information", "Sustainable Technology"
             ],
-
-            multi_label=True,
-            hypothesis_template="This text discusses {}."
-        )
+                multi_label=True
+            )
 
             classification = {
                 'topics': result['labels'],
@@ -86,6 +199,8 @@ class ModelManager:
 
             # Cache the result
             if cache_key:
+                if 'model_cache' not in st.session_state:
+                    st.session_state.model_cache = {'classifications': {}}
                 st.session_state.model_cache['classifications'][cache_key] = classification
 
             return classification
@@ -93,39 +208,40 @@ class ModelManager:
         except Exception as e:
             logger.error(f"Classification error: {str(e)}")
             return None
-        
-    def initialize_models(self) -> bool:
-        """Initialize all models"""
-        try:
-            # Initialize classifier
-            self.classifier = pipeline(
-                "zero-shot-classification",
-                model="cross-encoder/nli-deberta-v3-small",
-                device=DEVICE
-            )
-            
-            # Initialize similarity calculator
-            self.similarity_calculator = SimilarityCalculator()
-            
-            # Initialize other models
-            self.summary_model = SummaryGenerator()
-            self.image_generator = ImageGenerator()
-            
-            # Mark as initialized
-            self.initialized = True
-            return True
-            
-        except Exception as e:
-            logger.error(f"Model initialization error: {str(e)}")
-            return False
 
-    def check_initialized(self) -> bool:
-        """Check if all models are initialized"""
-        return (self.initialized and
-                self.classifier is not None and
-                self.summary_model is not None and
-                self.similarity_model is not None and
-                self.image_generator is not None)
+    
+    # def initialize_models(self) -> bool:
+    #     """Initialize all models"""
+    #     try:
+    #         # Initialize classifier
+    #         self.classifier = pipeline(
+    #             "zero-shot-classification",
+    #             model="cross-encoder/nli-deberta-v3-small",
+    #             device=DEVICE
+    #         )
+            
+    #         # Initialize similarity calculator
+    #         self.similarity_calculator = SimilarityCalculator()
+            
+    #         # Initialize other models
+    #         self.summary_model = SummaryGenerator()
+    #         self.image_generator = ImageGenerator()
+            
+    #         # Mark as initialized
+    #         self.initialized = True
+    #         return True
+            
+    #     except Exception as e:
+    #         logger.error(f"Model initialization error: {str(e)}")
+    #         return False
+
+    # def check_initialized(self) -> bool:
+    #     """Check if all models are initialized"""
+    #     return (self.initialized and
+    #             self.classifier is not None and
+    #             self.summary_model is not None and
+    #             self.similarity_model is not None and
+    #             self.image_generator is not None)
 
 class SummaryGenerator:
     """Handles document summarization"""
@@ -241,20 +357,22 @@ class ImageGenerator:
 
     def _create_prompt(self, text: str, title: str) -> str:
         """Create an optimized prompt for academic/technical content"""
-        return f"""Create a professional concept visualization for an academic/technical document:
+        return f"""Create a professional artistic concept visualization:
         Title: {title}
         Content Summary: {text[:300]}
-        Requirements:
-        - Professional academic/technical style
-        - Abstract representation of key concepts
-        - Clean, minimalist design
-        - Scientific/technical aesthetic
+        Style Requirements:
+        - Modern digital art style
+        - Professional futuristic design
+        - Abstract representation of the concept
+        - Rich symbolic visualization
+        - Vibrant colors and dynamic composition
+        - Highly detailed technological aesthetic
+        - Focus on the core idea, not technical details
+        - No text, charts, or diagrams
         - Relevant visual metaphors
-        - No text or labels
-        - Single cohesive image
-        - Subtle color scheme
+        - Single cohesive image that captures the essence
+        - Professional sci-fi art quality
         - High-quality rendering
-        - Clear visual hierarchy
         """
 
 class CitationExtractor:
@@ -375,33 +493,63 @@ class SimilarityCalculator:
         self.model.to(DEVICE)
 
     def calculate_similarity(self, source_text: str, comparison_texts: List[str]) -> Optional[List[float]]:
-        """Calculate semantic similarity between documents"""
+        """Calculate document similarity with error handling"""
         try:
+            if not self.similarity_calculator:
+                logger.warning("Similarity calculator not available")
+                return None
+
             with torch.no_grad():
-                # Generate embeddings
-                source_embedding = self.model.encode(
+                source_embedding = self.similarity_calculator.encode(
                     source_text, 
                     convert_to_tensor=True,
                     device=DEVICE
                 )
-                comparison_embeddings = self.model.encode(
-                    comparison_texts, 
+                comparison_embeddings = self.similarity_calculator.encode(
+                    comparison_texts,
                     convert_to_tensor=True,
                     device=DEVICE
                 )
                 
-                # Calculate cosine similarity
                 similarities = torch.nn.functional.cosine_similarity(
                     source_embedding.unsqueeze(0),
                     comparison_embeddings
                 )
                 
-                # Convert to percentages
                 return [float(score) * 100 for score in similarities]
-                
+
         except Exception as e:
             logger.error(f"Similarity calculation error: {str(e)}")
             return None
+        
+    # def calculate_similarity(self, source_text: str, comparison_texts: List[str]) -> Optional[List[float]]:
+    #     """Calculate semantic similarity between documents"""
+    #     try:
+    #         with torch.no_grad():
+    #             # Generate embeddings
+    #             source_embedding = self.model.encode(
+    #                 source_text, 
+    #                 convert_to_tensor=True,
+    #                 device=DEVICE
+    #             )
+    #             comparison_embeddings = self.model.encode(
+    #                 comparison_texts, 
+    #                 convert_to_tensor=True,
+    #                 device=DEVICE
+    #             )
+                
+    #             # Calculate cosine similarity
+    #             similarities = torch.nn.functional.cosine_similarity(
+    #                 source_embedding.unsqueeze(0),
+    #                 comparison_embeddings
+    #             )
+                
+    #             # Convert to percentages
+    #             return [float(score) * 100 for score in similarities]
+                
+    #     except Exception as e:
+    #         logger.error(f"Similarity calculation error: {str(e)}")
+    #         return None
         
 
     def find_similar_sections(self, source_text: str, target_text: str, 
